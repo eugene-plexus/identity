@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
 from .._generated.common_models import Problem, SelfModelEntry
-from ..store import IdentityStore
+from ..clients.hemisphere_client import HemisphereError
+from ..reflection import ReflectionConfigError, run_reflection
+from ..store import ConstitutionStore, IdentityStore
 
 router = APIRouter(tags=["self-model"])
 
@@ -43,17 +46,86 @@ async def query_self_model(
     return _SelfModelResponse(entries=entries)
 
 
-@router.post("/v1/identity/self-model/reflect", status_code=501)
-async def reflect_and_write_self_model(request: Request) -> None:
-    """v0.2 skeleton: reflection requires a configured hemisphere-driver
-    client to actually run; that integration lands in a follow-up.
-    Returns 501 with a clear message so the UI can surface "not yet
-    available in this build" rather than a generic error.
+class _ReflectRequest(BaseModel):
+    lookbackTurns: int | None = None
+    conversationId: UUID | None = None
+
+
+class _ReflectResponse(BaseModel):
+    entriesWritten: list[SelfModelEntry]
+
+
+@router.post("/v1/identity/self-model/reflect", response_model=_ReflectResponse)
+async def reflect_and_write_self_model(
+    request: Request, body: _ReflectRequest | None = None
+) -> _ReflectResponse:
+    """Trigger Eugene's reflection process.
+
+    Reads `lookbackTurns` recent memory turns (with the operator if
+    no conversationId is supplied), asks the configured hemisphere-
+    driver to extract autobiographical observations, and persists
+    them as `SelfModelEntry` rows. Returns the new entries (NOT all
+    entries — caller can re-query for the full set).
+
+    Returns 503 when the operator hasn't configured
+    `reflectionHemisphereUrl`, when the hemisphere-driver is
+    unreachable, or when identity is in safe mode.
     """
-    raise _problem(
-        status.HTTP_501_NOT_IMPLEMENTED,
-        "Not Implemented",
-        "Reflection requires a configured hemisphere-driver to call "
-        "into. That wiring is a v0.2 follow-up. Self-model entries can "
-        "still be written directly via the storage layer for now.",
-    )
+    if getattr(request.app.state, "safe_mode", False):
+        raise _problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Identity in safe mode",
+            "Reflection is disabled while identity is in safe mode "
+            "(EUGENE_PLEXUS_IDENTITY_SAFE_MODE=1). Fix config via "
+            "/v1/config and restart without the env var.",
+        )
+
+    constitution_store: ConstitutionStore = request.app.state.constitution_store
+    identity_store: IdentityStore = request.app.state.identity_store
+    hemisphere_client = getattr(request.app.state, "hemisphere_client", None)
+    memory_client = getattr(request.app.state, "memory_client", None)
+    config_store = request.app.state.config_store
+
+    body = body or _ReflectRequest()
+    default_lookback = int(config_store.get("reflectionMaxLookbackTurns") or 50)
+    lookback = body.lookbackTurns or default_lookback
+
+    # If no conversationId is supplied, the reflection scopes to the
+    # operator's recent activity. Resolve operator personId from the
+    # store; ensure_operator() creates one on first call so a fresh
+    # install still works.
+    related_person_id: UUID | None = None
+    if body.conversationId is None:
+        operator = identity_store.ensure_operator()
+        related_person_id = operator.personId
+
+    try:
+        result = await run_reflection(
+            constitution_store=constitution_store,
+            identity_store=identity_store,
+            hemisphere_client=hemisphere_client,
+            memory_client=memory_client,
+            lookback_turns=lookback,
+            conversation_id=body.conversationId,
+            related_person_id=related_person_id,
+        )
+    except ReflectionConfigError as e:
+        raise _problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Reflection not configured",
+            e.detail,
+        ) from e
+    except HemisphereError as e:
+        raise _problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Reflection hemisphere unreachable",
+            e.detail,
+        ) from e
+    except httpx.HTTPError as e:
+        raise _problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Reflection upstream unreachable",
+            f"Network failure during reflection: {e!r}",
+        ) from e
+
+    return _ReflectResponse(entriesWritten=result.entries_written)

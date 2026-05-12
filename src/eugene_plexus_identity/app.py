@@ -33,7 +33,8 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 
 from . import __version__
-from .auth_state import load_auth_state
+from .auth_state import AuthState, load_auth_state
+from .clients import HemisphereClient, MemoryClient
 from .config import ConfigStore
 from .dependencies import require_authorized, require_operator
 from .routes import admin as admin_routes
@@ -90,10 +91,42 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         identity_store.load()
     app.state.identity_store = identity_store
 
+    # Reflection clients. Both are optional — if neither URL is
+    # configured, the reflect endpoint returns 503 with an actionable
+    # message. Tests can pre-populate `app.state.hemisphere_client` /
+    # `app.state.memory_client` with fakes.
+    auth: AuthState = app.state.auth_state
+    owns_hemisphere = False
+    if not hasattr(app.state, "hemisphere_client"):
+        hemi_url = config_store.get("reflectionHemisphereUrl") if not settings.safe_mode else None
+        if hemi_url:
+            app.state.hemisphere_client = HemisphereClient(
+                base_url=str(hemi_url),
+                service_token=auth.service_token,
+            )
+            owns_hemisphere = True
+        else:
+            app.state.hemisphere_client = None
+    owns_memory = False
+    if not hasattr(app.state, "memory_client"):
+        mem_url = config_store.get("reflectionMemoryUrl") if not settings.safe_mode else None
+        if mem_url:
+            app.state.memory_client = MemoryClient(
+                base_url=str(mem_url),
+                service_token=auth.service_token,
+            )
+            owns_memory = True
+        else:
+            app.state.memory_client = None
+
     try:
         yield
     finally:
         identity_store.close()
+        if owns_hemisphere and app.state.hemisphere_client is not None:
+            await app.state.hemisphere_client.aclose()
+        if owns_memory and app.state.memory_client is not None:
+            await app.state.memory_client.aclose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

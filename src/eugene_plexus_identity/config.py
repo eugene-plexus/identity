@@ -34,6 +34,7 @@ from ._generated.common_models import (
 CATEGORY_LABELS: dict[str, str] = {
     "logging": "Logging",
     "storage": "Storage",
+    "reflection": "Self-Model Reflection",
 }
 
 FIELDS: list[ConfigField] = [
@@ -51,6 +52,53 @@ FIELDS: list[ConfigField] = [
         default="INFO",
         enumValues=["DEBUG", "INFO", "WARNING", "ERROR"],
         requiresRestart=True,
+    ),
+    ConfigField(
+        key="reflectionHemisphereUrl",
+        label="Reflection hemisphere URL",
+        description=(
+            "HTTP base of a `eugene-plexus/hemisphere-driver` instance "
+            "to use for the self-model reflection process. Identity "
+            "calls `POST /v1/generate` on this URL with a reflection "
+            "prompt to produce new self-model entries. Leave empty to "
+            "disable reflection (the endpoint returns 503 instead of "
+            "trying)."
+        ),
+        category="reflection",
+        valueType=ConfigValueType.url,
+        default=None,
+        required=False,
+    ),
+    ConfigField(
+        key="reflectionMemoryUrl",
+        label="Reflection memory URL",
+        description=(
+            "HTTP base of `eugene-plexus/memory` for the reflection "
+            "process to read recent turns from. The reflection prompt "
+            "is built from these turns. Leave empty to disable "
+            "memory-grounded reflection — the prompt will only include "
+            "the constitution + existing self-model entries."
+        ),
+        category="reflection",
+        valueType=ConfigValueType.url,
+        default=None,
+        required=False,
+    ),
+    ConfigField(
+        key="reflectionMaxLookbackTurns",
+        label="Default reflection lookback turns",
+        description=(
+            "Default number of recent memory turns to include in the "
+            "reflection prompt when the caller doesn't specify "
+            "`lookbackTurns`. Higher gives Eugene more context to "
+            "reflect on but eats more of the hemisphere's context "
+            "window."
+        ),
+        category="reflection",
+        valueType=ConfigValueType.integer,
+        default=50,
+        minimum=1,
+        maximum=500,
     ),
 ]
 
@@ -80,9 +128,17 @@ def _validate_value(field: ConfigField, value: Any) -> str | None:
         if value not in allowed:
             return f"must be one of {allowed}"
         return None
-    if vt == ConfigValueType.string:
+    if vt in (ConfigValueType.string, ConfigValueType.url, ConfigValueType.file_path):
         if not isinstance(value, str):
             return f"expected string, got {type(value).__name__}"
+        return None
+    if vt == ConfigValueType.integer:
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"expected integer, got {type(value).__name__}"
+        if field.minimum is not None and value < field.minimum:
+            return f"must be >= {field.minimum}"
+        if field.maximum is not None and value > field.maximum:
+            return f"must be <= {field.maximum}"
         return None
     return f"unsupported valueType: {vt}"
 
