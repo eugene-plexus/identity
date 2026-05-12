@@ -55,9 +55,11 @@ def test_self_model_respects_limit(client: TestClient, app: FastAPI) -> None:
     assert len(response.json()["entries"]) == 3
 
 
-def test_reflect_returns_501(client: TestClient) -> None:
-    """v0.2 skeleton: reflection isn't wired yet."""
+def test_reflect_returns_503_when_hemisphere_unconfigured(client: TestClient) -> None:
+    """v0.2 reflection requires `reflectionHemisphereUrl` to be set.
+    Without it the endpoint returns 503 — distinguishable from "not
+    yet built" (which would be 501) and from "transient outage"."""
     response = client.post("/v1/identity/self-model/reflect", json={})
-    assert response.status_code == 501
+    assert response.status_code == 503
     body = response.json()
-    assert "follow-up" in body["detail"]["detail"].lower()
+    assert "reflectionHemisphereUrl" in body["detail"]["detail"]
