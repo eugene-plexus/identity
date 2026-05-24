@@ -8,11 +8,18 @@ from fastapi.testclient import TestClient
 from eugene_plexus_identity.store import IdentityStore
 
 
-def test_list_persons_empty_to_start(client: TestClient) -> None:
+def test_list_persons_shows_only_operator_at_startup(client: TestClient) -> None:
+    """The identity lifespan calls `ensure_operator()` so the operator
+    person exists from turn zero — without it, the orchestrator's
+    `_resolve_operator_person_id` returns None on every chat turn,
+    falls back to NIL_PERSON_ID, and cross-conversation recall breaks."""
     response = client.get("/v1/identity/persons")
     assert response.status_code == 200
     body = response.json()
-    assert body["persons"] == []
+    assert len(body["persons"]) == 1
+    operator = body["persons"][0]
+    assert operator["isOperator"] is True
+    assert operator["displayName"] == "Operator"
 
 
 def test_create_person_round_trips(client: TestClient) -> None:

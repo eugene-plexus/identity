@@ -383,9 +383,11 @@ class IdentityStore:
 
     def ensure_operator(self, *, display_name: str = "Operator") -> Person:
         """Idempotent: returns the operator's Person record, creating
-        it (plus the canonical UI platform alias) on first call. The
-        wizard calls this during initialize so identity has a known
-        operator record before the first chat turn.
+        it (plus the canonical UI platform alias) on first call.
+        Called from the identity app's lifespan at startup so the
+        orchestrator can resolve `personId` for chat turns from turn
+        zero — without it, all writes fall back to NIL_PERSON_ID and
+        cross-conversation recall silently breaks.
         """
         with self._lock:
             cur = self._require_conn().execute(

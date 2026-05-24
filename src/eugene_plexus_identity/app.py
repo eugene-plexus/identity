@@ -89,6 +89,16 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     identity_store = IdentityStore(settings.db_file)
     if not settings.safe_mode:
         identity_store.load()
+        # Ensure the operator person exists at startup. Without this,
+        # the orchestrator's `_resolve_operator_person_id` returns None
+        # on every chat turn, effective_person_id falls back to
+        # NIL_PERSON_ID, and `person_recent` is skipped — Eugene has
+        # no cross-conversation recall of who you are.
+        # Idempotent: a no-op when an operator already exists, so a
+        # fresh install gets one and a re-install preserves the prior
+        # operator UUID + aliases. Default displayName is "Operator";
+        # the operator can rename via PATCH /v1/identity/persons/{id}.
+        identity_store.ensure_operator()
     app.state.identity_store = identity_store
 
     # Reflection clients. Both are optional — if neither URL is
