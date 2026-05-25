@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 from ._generated.common_models import (
+    ComponentKind,
     ConfigDocument,
     ConfigField,
     ConfigFieldError,
@@ -55,32 +56,40 @@ FIELDS: list[ConfigField] = [
     ),
     ConfigField(
         key="reflectionHemisphereUrl",
-        label="Reflection hemisphere URL",
+        label="Reflection hemisphere",
         description=(
-            "HTTP base of a `eugene-plexus/hemisphere-driver` instance "
-            "to use for the self-model reflection process. Identity "
-            "calls `POST /v1/generate` on this URL with a reflection "
-            "prompt to produce new self-model entries. Leave empty to "
-            "disable reflection (the endpoint returns 503 instead of "
-            "trying)."
+            "Which `hemisphere-driver` instance to call for the self-"
+            "model reflection process. The UI populates this dropdown "
+            "from the watchdog's topology; pick `(off)` to disable "
+            "reflection (the endpoint returns 503 instead of trying)."
         ),
         category="reflection",
         valueType=ConfigValueType.url,
+        # The wire value is still the peer's URL — the hint just tells
+        # the UI to render this as a dropdown sourced from the watchdog
+        # topology (filtered to hemisphere-driver instances) instead of
+        # a free-text URL field the operator has to type by hand.
+        componentKindHint=ComponentKind.hemisphere_driver,
         default=None,
         required=False,
     ),
     ConfigField(
         key="reflectionMemoryUrl",
-        label="Reflection memory URL",
+        label="Reflection memory",
         description=(
-            "HTTP base of `eugene-plexus/memory` for the reflection "
-            "process to read recent turns from. The reflection prompt "
-            "is built from these turns. Leave empty to disable "
-            "memory-grounded reflection — the prompt will only include "
-            "the constitution + existing self-model entries."
+            "Whether the reflection process can read recent turns from "
+            "the `memory` component to ground its self-model updates. "
+            "Pick `(off)` to disable memory-grounded reflection — the "
+            "prompt will only include the constitution + existing self-"
+            "model entries."
         ),
         category="reflection",
         valueType=ConfigValueType.url,
+        # Stock topology has one memory backend, so this dropdown
+        # collapses to effectively an on/off toggle. When v0.3+ adds
+        # multiple backends, the same kindHint surfaces them all
+        # without a UI rewrite — the dropdown just grows entries.
+        componentKindHint=ComponentKind.memory,
         default=None,
         required=False,
     ),
