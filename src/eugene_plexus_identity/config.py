@@ -72,6 +72,14 @@ FIELDS: list[ConfigField] = [
         componentKindHint=ComponentKind.hemisphere_driver,
         default=None,
         required=False,
+        # The `hemisphere_client` is constructed once in the lifespan
+        # from this URL; route handlers read the in-memory client, not
+        # the config_store. A PATCH would persist the new URL but the
+        # in-memory client would stay stale (or None) until next boot
+        # — and the reflect endpoint would keep returning 503 even
+        # though the saved config now points at a valid driver. Mark
+        # restart-required so the UI auto-restarts on save.
+        requiresRestart=True,
     ),
     ConfigField(
         key="reflectionMemoryUrl",
@@ -92,6 +100,10 @@ FIELDS: list[ConfigField] = [
         componentKindHint=ComponentKind.memory,
         default=None,
         required=False,
+        # Same lifespan-cached-client issue as reflectionHemisphereUrl
+        # above — the `memory_client` is built once at startup. Restart
+        # required so a PATCH actually changes the running behavior.
+        requiresRestart=True,
     ),
     ConfigField(
         key="reflectionMaxLookbackTurns",
