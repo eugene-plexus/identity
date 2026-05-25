@@ -26,6 +26,7 @@ Routing:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -49,6 +50,15 @@ from .settings import Settings, load_settings
 from .store import ConstitutionStore, IdentityStore
 
 log = logging.getLogger(__name__)
+
+
+# How long we'll wait for any single lifespan step (sqlite open, peer
+# auto-resolve, etc.) before treating it as a stall. A hard timeout
+# turns a silent hang into a visible failure: the operator sees a
+# traceback in the watchdog log, the crash counter increments, and
+# eventually backoff kicks in — vs. the v0.2 bug where identity hung
+# at "Waiting for application startup" forever with no signal at all.
+_LIFESPAN_STEP_TIMEOUT_SECONDS = 30.0
 
 
 async def resolve_peer_url(
@@ -98,6 +108,14 @@ async def resolve_peer_url(
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
 
+    # Lifespan-checkpoint logging: every step that could plausibly
+    # hang (file I/O, sqlite open, async peer-URL resolution) emits a
+    # log line on entry. The v0.2 startup-hang bug
+    # ([[project_identity_startup_hang_v02]]) was a silent stall
+    # between "Waiting for application startup" and "Application
+    # startup complete" with NO traceback — adding these checkpoints
+    # so the next occurrence pinpoints WHICH step stalled.
+    log.info("lifespan: building auth_state")
     if not hasattr(app.state, "auth_state"):
         app.state.auth_state = load_auth_state(
             signing_key_b64=settings.auth_signing_key,
@@ -105,6 +123,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             master_key_b64=settings.master_key,
         )
 
+    log.info("lifespan: loading config from %s", settings.config_file)
     config_store = ConfigStore(settings.config_file)
     if settings.safe_mode:
         log.warning(
@@ -121,6 +140,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Constitution: always reachable for reads (every chat turn needs
     # at least `name`). Safe mode skips the disk read and serves the
     # default constitution; the operator's persisted file is preserved.
+    log.info("lifespan: loading constitution from %s", settings.constitution_file)
     constitution_store = ConstitutionStore(settings.constitution_file)
     if not settings.safe_mode:
         constitution_store.load()
@@ -130,9 +150,21 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # can't block /v1/config — the routes that need it (persons /
     # self-model / links) will produce a 500 if hit, but the operator
     # can still fix config and restart.
+    log.info("lifespan: opening sqlite identity store at %s", settings.db_file)
     identity_store = IdentityStore(settings.db_file)
     if not settings.safe_mode:
-        identity_store.load()
+        # `IdentityStore.load()` is synchronous (sqlite3.connect +
+        # schema). On a stock install it returns in <10ms; on a wedged
+        # DB (lock left by a killed prior process, fs issue) it can
+        # block forever with no Python error surface. Run it in a
+        # worker thread under wait_for so the lifespan can't be stalled
+        # silently — a timeout becomes a TimeoutError traceback the
+        # operator can act on.
+        await asyncio.wait_for(
+            asyncio.to_thread(identity_store.load),
+            timeout=_LIFESPAN_STEP_TIMEOUT_SECONDS,
+        )
+        log.info("lifespan: ensuring operator person exists")
         # Ensure the operator person exists at startup. Without this,
         # the orchestrator's `_resolve_operator_person_id` returns None
         # on every chat turn, effective_person_id falls back to
@@ -142,7 +174,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # fresh install gets one and a re-install preserves the prior
         # operator UUID + aliases. Default displayName is "Operator";
         # the operator can rename via PATCH /v1/identity/persons/{id}.
-        identity_store.ensure_operator()
+        await asyncio.wait_for(
+            asyncio.to_thread(identity_store.ensure_operator),
+            timeout=_LIFESPAN_STEP_TIMEOUT_SECONDS,
+        )
     app.state.identity_store = identity_store
 
     # Reflection clients. Both are optional — if neither URL is
@@ -162,11 +197,28 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             return explicit
         if settings.safe_mode:
             return None
-        resolved = await resolve_peer_url(
-            kind=kind,
-            watchdog_url=settings.watchdog_url,
-            service_token=auth.service_token,
-        )
+        # `resolve_peer_url` already has its own 5s httpx timeout; the
+        # outer wait_for is belt-and-suspenders against an httpx event-
+        # loop hang (suspected v0.2 culprit) outliving the inner timeout.
+        try:
+            resolved = await asyncio.wait_for(
+                resolve_peer_url(
+                    kind=kind,
+                    watchdog_url=settings.watchdog_url,
+                    service_token=auth.service_token,
+                ),
+                timeout=_LIFESPAN_STEP_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            log.warning(
+                "auto-resolve of %s from watchdog timed out after %.0fs — "
+                "continuing without (set %s explicitly in identity config "
+                "to bypass)",
+                kind,
+                _LIFESPAN_STEP_TIMEOUT_SECONDS,
+                config_key,
+            )
+            return None
         if resolved:
             log.info(
                 "auto-resolved %s from watchdog: %s (config field %s was unset)",
@@ -178,6 +230,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     owns_hemisphere = False
     if not hasattr(app.state, "hemisphere_client"):
+        log.info("lifespan: resolving reflection hemisphere peer URL")
         hemi_url = await _resolve("hemisphere-driver", "reflectionHemisphereUrl")
         if hemi_url:
             app.state.hemisphere_client = HemisphereClient(
@@ -189,6 +242,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.hemisphere_client = None
     owns_memory = False
     if not hasattr(app.state, "memory_client"):
+        log.info("lifespan: resolving reflection memory peer URL")
         mem_url = await _resolve("memory", "reflectionMemoryUrl")
         if mem_url:
             app.state.memory_client = MemoryClient(
@@ -198,6 +252,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             owns_memory = True
         else:
             app.state.memory_client = None
+    log.info("lifespan: ready (yielding)")
 
     try:
         yield
