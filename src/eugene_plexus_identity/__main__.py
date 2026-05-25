@@ -22,6 +22,11 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        # `force=True` matches the orchestrator / hemisphere-driver /
+        # memory / connector pattern. uvicorn touches logging before
+        # we get here; without force, basicConfig is a no-op and our
+        # `log.info(...)` checkpoints silently drop on the floor.
+        force=True,
     )
 
     settings = load_settings()
