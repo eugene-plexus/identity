@@ -30,6 +30,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import Depends, FastAPI
 
 from . import __version__
@@ -48,6 +49,49 @@ from .settings import Settings, load_settings
 from .store import ConstitutionStore, IdentityStore
 
 log = logging.getLogger(__name__)
+
+
+async def resolve_peer_url(
+    *,
+    kind: str,
+    watchdog_url: str,
+    service_token: str | None,
+    timeout_seconds: float = 5.0,
+) -> str | None:
+    """Ask the watchdog where a peer component lives.
+
+    The watchdog is the source of truth for body-component topology;
+    duplicating URLs in every component's config is the OpenClaw-style
+    trap we're avoiding. For identity, this resolves reflection peers
+    (a hemisphere-driver and memory) when the operator hasn't pinned
+    explicit URLs via config.
+
+    Returns the peer's URL (trailing slash stripped) or None when the
+    watchdog can't be reached / has no entry of that kind. For kinds
+    with multiple instances (hemisphere-driver), the FIRST entry wins;
+    operator overrides via config to pin a specific one.
+    """
+    headers = {"Authorization": f"Bearer {service_token}"} if service_token else {}
+    try:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            response = await client.get(
+                f"{watchdog_url.rstrip('/')}/v1/components",
+                headers=headers,
+            )
+        if response.status_code >= 400:
+            return None
+        body = response.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    components = body.get("components") if isinstance(body, dict) else None
+    if not isinstance(components, list):
+        return None
+    for c in components:
+        if isinstance(c, dict) and c.get("kind") == kind:
+            url = c.get("url")
+            if isinstance(url, str) and url:
+                return url.rstrip("/")
+    return None
 
 
 @asynccontextmanager
@@ -102,16 +146,42 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.identity_store = identity_store
 
     # Reflection clients. Both are optional — if neither URL is
-    # configured, the reflect endpoint returns 503 with an actionable
-    # message. Tests can pre-populate `app.state.hemisphere_client` /
+    # configured AND the watchdog has nothing to auto-resolve, the
+    # reflect endpoint returns 503 with an actionable message. Tests
+    # can pre-populate `app.state.hemisphere_client` /
     # `app.state.memory_client` with fakes.
+    #
+    # Auto-resolve order: explicit config value → watchdog
+    # /v1/components → None. Same trap-avoidance pattern the
+    # orchestrator and connector use for their peers.
     auth: AuthState = app.state.auth_state
+
+    async def _resolve(kind: str, config_key: str) -> str | None:
+        explicit = str(config_store.get(config_key) or "").strip()
+        if explicit:
+            return explicit
+        if settings.safe_mode:
+            return None
+        resolved = await resolve_peer_url(
+            kind=kind,
+            watchdog_url=settings.watchdog_url,
+            service_token=auth.service_token,
+        )
+        if resolved:
+            log.info(
+                "auto-resolved %s from watchdog: %s (config field %s was unset)",
+                kind,
+                resolved,
+                config_key,
+            )
+        return resolved
+
     owns_hemisphere = False
     if not hasattr(app.state, "hemisphere_client"):
-        hemi_url = config_store.get("reflectionHemisphereUrl") if not settings.safe_mode else None
+        hemi_url = await _resolve("hemisphere-driver", "reflectionHemisphereUrl")
         if hemi_url:
             app.state.hemisphere_client = HemisphereClient(
-                base_url=str(hemi_url),
+                base_url=hemi_url,
                 service_token=auth.service_token,
             )
             owns_hemisphere = True
@@ -119,10 +189,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.hemisphere_client = None
     owns_memory = False
     if not hasattr(app.state, "memory_client"):
-        mem_url = config_store.get("reflectionMemoryUrl") if not settings.safe_mode else None
+        mem_url = await _resolve("memory", "reflectionMemoryUrl")
         if mem_url:
             app.state.memory_client = MemoryClient(
-                base_url=str(mem_url),
+                base_url=mem_url,
                 service_token=auth.service_token,
             )
             owns_memory = True

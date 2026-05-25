@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     (EUGENE_PLEXUS_IDENTITY_MASTER_KEY). Not used in v0.2 — identity
     doesn't currently store anything that needs at-rest encryption."""
 
+    watchdog_url: str = "http://127.0.0.1:8079"
+    """Watchdog endpoint used to auto-resolve reflection peer URLs
+    (reflectionHemisphereUrl, reflectionMemoryUrl) when not explicitly
+    set in config. Override with EUGENE_PLEXUS_IDENTITY_WATCHDOG_URL
+    on networked deployments. For reflectionHemisphereUrl auto-resolve
+    picks the first hemisphere-driver entry — operator overrides via
+    the config field to pin a specific one."""
+
 
 def load_settings() -> Settings:
     return Settings()
