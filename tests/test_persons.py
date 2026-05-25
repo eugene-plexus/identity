@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -20,6 +23,44 @@ def test_list_persons_shows_only_operator_at_startup(client: TestClient) -> None
     operator = body["persons"][0]
     assert operator["isOperator"] is True
     assert operator["displayName"] == "Operator"
+
+
+def test_ensure_operator_is_reentrant_on_subsequent_boots(tmp_path: Path) -> None:
+    """Regression for the v0.2 startup-hang bug. The first call to
+    `ensure_operator()` on a fresh DB worked fine (no row → falls through
+    to `create_person` outside the lock). The SECOND call (an existing
+    operator row) found the row INSIDE the lock and then called
+    `get_person`, which tried to re-acquire the same non-reentrant
+    `threading.Lock`, deadlocking the lifespan forever.
+
+    This test runs the second call on a background thread with a hard
+    timeout so a regression hangs the THREAD, not the whole pytest run.
+    """
+    store = IdentityStore(tmp_path / "identity.db")
+    store.load()
+    try:
+        # First call seeds the operator row.
+        first = store.ensure_operator()
+        assert first.isOperator is True
+
+        # Second call hits the existing-row path — the one that
+        # deadlocked before the lock-release fix.
+        result: list = []
+
+        def _call() -> None:
+            result.append(store.ensure_operator())
+
+        worker = threading.Thread(target=_call, daemon=True)
+        worker.start()
+        worker.join(timeout=5.0)
+        assert not worker.is_alive(), (
+            "ensure_operator() deadlocked on second call — non-reentrant "
+            "lock was held while calling get_person()"
+        )
+        assert len(result) == 1
+        assert result[0].personId == first.personId
+    finally:
+        store.close()
 
 
 def test_create_person_round_trips(client: TestClient) -> None:

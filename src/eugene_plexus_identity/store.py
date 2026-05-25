@@ -389,15 +389,22 @@ class IdentityStore:
         zero — without it, all writes fall back to NIL_PERSON_ID and
         cross-conversation recall silently breaks.
         """
+        # NOTE: `self._lock` is a non-reentrant `threading.Lock`. The
+        # SELECT below must release the lock BEFORE we call
+        # `get_person`/`create_person`/`add_alias` — those methods take
+        # the same lock and would self-deadlock on a same-thread
+        # second acquire. (This is what caused the v0.2 startup hang:
+        # first install worked because no row was found; every
+        # subsequent boot deadlocked here.)
         with self._lock:
             cur = self._require_conn().execute(
                 "SELECT person_id FROM persons WHERE is_operator = 1 LIMIT 1"
             )
             row = cur.fetchone()
-            if row is not None:
-                existing = self.get_person(UUID(row[0]))
-                assert existing is not None
-                return existing
+        if row is not None:
+            existing = self.get_person(UUID(row[0]))
+            assert existing is not None
+            return existing
         operator = self.create_person(display_name=display_name, is_operator=True)
         self.add_alias(
             person_id=operator.personId,
