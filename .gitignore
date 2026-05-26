@@ -31,7 +31,9 @@ CLAUDE.md
 
 # --- Local config / secrets ---
 config.yaml
+constitution.yaml
 *.local.yaml
+*.db
 .env
 .env.*
 !.env.example
