@@ -59,9 +59,7 @@ async def list_persons(request: Request) -> _PersonsResponse:
     status_code=201,
     dependencies=[Depends(require_operator)],
 )
-async def create_person(
-    request: Request, body: _CreatePersonRequest
-) -> Person:
+async def create_person(request: Request, body: _CreatePersonRequest) -> Person:
     store: IdentityStore = request.app.state.identity_store
     return store.create_person(
         display_name=body.displayName,
@@ -87,9 +85,7 @@ async def get_person(request: Request, person_id: UUID) -> Person:
     response_model=Person,
     dependencies=[Depends(require_operator)],
 )
-async def update_person(
-    request: Request, person_id: UUID, body: _UpdatePersonRequest
-) -> Person:
+async def update_person(request: Request, person_id: UUID, body: _UpdatePersonRequest) -> Person:
     store: IdentityStore = request.app.state.identity_store
     updated = store.update_person(
         person_id,
@@ -132,9 +128,7 @@ async def delete_person(request: Request, person_id: UUID) -> None:
     "/v1/identity/persons/{person_id}/relationship",
     response_model=RelationshipSummary,
 )
-async def get_person_relationship(
-    request: Request, person_id: UUID
-) -> RelationshipSummary:
+async def get_person_relationship(request: Request, person_id: UUID) -> RelationshipSummary:
     """v0.2 returns a minimal summary: just the personId + lastUpdated
     + turnCount=0. The orchestrator integrates recent turns from the
     memory component itself when assembling hemisphere prompts; the

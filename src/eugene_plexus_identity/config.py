@@ -177,9 +177,7 @@ class ConfigStore:
             if self._path.exists():
                 raw = yaml.safe_load(self._path.read_text(encoding="utf-8")) or {}
                 if not isinstance(raw, dict):
-                    raise ValueError(
-                        f"{self._path} must be a YAML mapping at the root"
-                    )
+                    raise ValueError(f"{self._path} must be a YAML mapping at the root")
                 merged = _defaults()
                 for k, v in raw.items():
                     if k in _FIELDS_BY_KEY:

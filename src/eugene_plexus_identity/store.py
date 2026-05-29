@@ -100,9 +100,7 @@ class ConstitutionStore:
                 return
             raw = yaml.safe_load(self._path.read_text(encoding="utf-8")) or {}
             if not isinstance(raw, dict):
-                raise ValueError(
-                    f"{self._path} must be a YAML mapping at the root"
-                )
+                raise ValueError(f"{self._path} must be a YAML mapping at the root")
             self._current = Constitution.model_validate(raw)
 
     def get(self) -> Constitution:
@@ -310,8 +308,7 @@ class IdentityStore:
             new_display = display_name if display_name is not None else row[1]
             new_note = relationship_note if relationship_note is not None else row[3]
             conn.execute(
-                "UPDATE persons SET display_name = ?, relationship_note = ? "
-                "WHERE person_id = ?",
+                "UPDATE persons SET display_name = ?, relationship_note = ? WHERE person_id = ?",
                 (new_display, new_note, str(person_id)),
             )
             conn.commit()
@@ -488,8 +485,7 @@ class IdentityStore:
             )
             for pid in related:
                 conn.execute(
-                    "INSERT OR IGNORE INTO self_model_persons (entry_id, person_id) "
-                    "VALUES (?, ?)",
+                    "INSERT OR IGNORE INTO self_model_persons (entry_id, person_id) VALUES (?, ?)",
                     (str(entry_id), str(pid)),
                 )
             conn.commit()
@@ -526,9 +522,7 @@ class IdentityStore:
             return None
         return self._row_to_pending_link(row)
 
-    def find_pending_for(
-        self, platform: str, account_id: str
-    ) -> PendingIdentityLink | None:
+    def find_pending_for(self, platform: str, account_id: str) -> PendingIdentityLink | None:
         """Returns the still-pending link for this (platform, account)
         pair, if one exists. Used to dedupe adapter calls."""
         with self._lock:
@@ -579,9 +573,7 @@ class IdentityStore:
         assert stored is not None
         return stored
 
-    def update_link_status(
-        self, link_id: UUID, new_status: Status1
-    ) -> PendingIdentityLink | None:
+    def update_link_status(self, link_id: UUID, new_status: Status1) -> PendingIdentityLink | None:
         with self._lock:
             conn = self._require_conn()
             cur = conn.execute(
@@ -617,9 +609,7 @@ class IdentityStore:
             linkedAt=_parse_iso(row[5]),
         )
 
-    def _row_to_self_model(
-        self, row: tuple[Any, ...], conn: sqlite3.Connection
-    ) -> SelfModelEntry:
+    def _row_to_self_model(self, row: tuple[Any, ...], conn: sqlite3.Connection) -> SelfModelEntry:
         entry_id = UUID(row[0])
         related_cur = conn.execute(
             "SELECT person_id FROM self_model_persons WHERE entry_id = ?",

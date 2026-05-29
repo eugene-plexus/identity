@@ -29,9 +29,7 @@ def test_parse_clean_json_object() -> None:
         'tend to ramble when the topic is open-ended."}]}'
     )
     parsed = parse_reflection_response(text)
-    assert parsed == [
-        ("creative-tasks", "I notice I tend to ramble when the topic is open-ended.")
-    ]
+    assert parsed == [("creative-tasks", "I notice I tend to ramble when the topic is open-ended.")]
 
 
 def test_parse_json_inside_markdown_code_fence() -> None:
@@ -173,9 +171,7 @@ class FakeMemoryClient:
     async def conversation(self, conversation_id: UUID) -> list[MemoryMessage]:
         return list(self._turns)
 
-    async def recent_for_person(
-        self, *, person_id: UUID, limit: int = 50
-    ) -> list[MemoryMessage]:
+    async def recent_for_person(self, *, person_id: UUID, limit: int = 50) -> list[MemoryMessage]:
         self.recent_calls.append((person_id, limit))
         return list(self._turns)
 
@@ -303,9 +299,7 @@ def test_reflect_resolves_operator_when_no_conversation_id(
 def test_reflect_honors_explicit_lookback(reflection_app: FastAPI) -> None:
     memory: FakeMemoryClient = reflection_app.state.memory_client
     with TestClient(reflection_app) as client:
-        response = client.post(
-            "/v1/identity/self-model/reflect", json={"lookbackTurns": 5}
-        )
+        response = client.post("/v1/identity/self-model/reflect", json={"lookbackTurns": 5})
     assert response.status_code == 200
     assert memory.recent_calls[0][1] == 5
 

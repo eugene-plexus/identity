@@ -54,10 +54,10 @@ REFLECTION_SYSTEM_PROMPT = (
     '"one or two sentence first-person observation about yourself"}]}\n\n'
     "Constraints:\n"
     "- `topic` is a short hyphenated kebab-case key for retrieval "
-    "(examples: \"creative-tasks\", \"uncertainty-handling\", "
-    "\"user-troy\", \"explanation-style\").\n"
-    "- `content` is FIRST PERSON. Write \"I notice...\", \"I tend "
-    "to...\", \"With Troy I usually...\", not third-person about "
+    '(examples: "creative-tasks", "uncertainty-handling", '
+    '"user-troy", "explanation-style").\n'
+    '- `content` is FIRST PERSON. Write "I notice...", "I tend '
+    'to...", "With Troy I usually...", not third-person about '
     "Eugene.\n"
     "- Return 0-5 entries. Quality over quantity. If nothing new "
     "stands out, return an empty entries list.\n"
@@ -116,8 +116,7 @@ def build_reflection_user_message(
     else:
         parts.append("== Recent conversation turns ==")
         parts.append(
-            "(no recent turns supplied; reflect on the constitution + "
-            "existing entries alone)"
+            "(no recent turns supplied; reflect on the constitution + existing entries alone)"
         )
     parts.append("")
     parts.append(

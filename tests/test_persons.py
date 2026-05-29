@@ -86,9 +86,9 @@ def test_get_unknown_person_returns_404(client: TestClient) -> None:
 
 
 def test_patch_person_updates_fields(client: TestClient) -> None:
-    pid = client.post(
-        "/v1/identity/persons", json={"displayName": "Casual Acquaintance"}
-    ).json()["personId"]
+    pid = client.post("/v1/identity/persons", json={"displayName": "Casual Acquaintance"}).json()[
+        "personId"
+    ]
 
     response = client.patch(
         f"/v1/identity/persons/{pid}",
@@ -100,9 +100,9 @@ def test_patch_person_updates_fields(client: TestClient) -> None:
 
 
 def test_delete_person_removes_it(client: TestClient) -> None:
-    pid = client.post(
-        "/v1/identity/persons", json={"displayName": "Forgettable"}
-    ).json()["personId"]
+    pid = client.post("/v1/identity/persons", json={"displayName": "Forgettable"}).json()[
+        "personId"
+    ]
     delete = client.delete(f"/v1/identity/persons/{pid}")
     assert delete.status_code == 204
     assert client.get(f"/v1/identity/persons/{pid}").status_code == 404
@@ -120,9 +120,7 @@ def test_relationship_summary_minimal_for_v02(client: TestClient) -> None:
     """v0.2 returns a minimal RelationshipSummary — no recent turns,
     no synthesized prose. The memory integration that fills these in
     lands later."""
-    pid = client.post(
-        "/v1/identity/persons", json={"displayName": "Pal"}
-    ).json()["personId"]
+    pid = client.post("/v1/identity/persons", json={"displayName": "Pal"}).json()["personId"]
 
     response = client.get(f"/v1/identity/persons/{pid}/relationship")
     assert response.status_code == 200
@@ -166,9 +164,9 @@ def test_delete_person_rejects_service_token(
     authed_operator_client: TestClient,
     orchestrator_service_token: str,
 ) -> None:
-    pid = authed_operator_client.post(
-        "/v1/identity/persons", json={"displayName": "Pal"}
-    ).json()["personId"]
+    pid = authed_operator_client.post("/v1/identity/persons", json={"displayName": "Pal"}).json()[
+        "personId"
+    ]
     response = authed_operator_client.delete(
         f"/v1/identity/persons/{pid}",
         headers={"Authorization": f"Bearer {orchestrator_service_token}"},

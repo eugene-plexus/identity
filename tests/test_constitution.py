@@ -35,18 +35,14 @@ def test_patch_constitution_updates_fields(client: TestClient) -> None:
 
 
 def test_patch_constitution_rejects_empty_name(client: TestClient) -> None:
-    response = client.patch(
-        "/v1/identity/constitution", json={"name": ""}
-    )
+    response = client.patch("/v1/identity/constitution", json={"name": ""})
     # name has minLength=1 in the spec; pydantic should reject before
     # reaching our store. Accept either 400 (our handler) or 422
     # (FastAPI's automatic validation) since both signal "invalid".
     assert response.status_code in (400, 422)
 
 
-def test_constitution_persists_across_app_reload(
-    settings: Settings, client: TestClient
-) -> None:
+def test_constitution_persists_across_app_reload(settings: Settings, client: TestClient) -> None:
     client.patch(
         "/v1/identity/constitution",
         json={"name": "Eugene", "freeText": "I value patience."},

@@ -50,9 +50,7 @@ def test_file_pending_link_rejected_for_operator(
     """Even the operator cannot file a pending link — that's by design.
     Only connector adapters introduce unknown identities, and operator-
     forged entries would bypass the spoof-resistance design."""
-    response = authed_operator_client.post(
-        "/v1/identity/links/pending", json=_sample_link_body()
-    )
+    response = authed_operator_client.post("/v1/identity/links/pending", json=_sample_link_body())
     assert response.status_code == 401
 
 
@@ -61,14 +59,12 @@ def test_file_duplicate_pending_link_returns_409(
 ) -> None:
     headers = {"Authorization": f"Bearer {connector_service_token}"}
     body = _sample_link_body()
-    first = authed_client.post(
-        "/v1/identity/links/pending", json=body, headers=headers
-    )
+    first = authed_client.post("/v1/identity/links/pending", json=body, headers=headers)
     assert first.status_code == 201
-    body["linkId"] = "00000000-0000-0000-0000-000000000002"  # different id, same (platform, account)
-    second = authed_client.post(
-        "/v1/identity/links/pending", json=body, headers=headers
+    body["linkId"] = (
+        "00000000-0000-0000-0000-000000000002"  # different id, same (platform, account)
     )
+    second = authed_client.post("/v1/identity/links/pending", json=body, headers=headers)
     assert second.status_code == 409
 
 
@@ -131,10 +127,7 @@ def test_approve_creates_new_person_with_alias(
     assert person["relationshipNote"] == "my wife"
     # Alias from the link is attached to the person.
     aliases = person["aliases"]
-    assert any(
-        a["platform"] == "discord" and a["accountId"] == "discord-user-123"
-        for a in aliases
-    )
+    assert any(a["platform"] == "discord" and a["accountId"] == "discord-user-123" for a in aliases)
 
 
 def test_approve_aliases_onto_existing_person(

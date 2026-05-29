@@ -45,9 +45,7 @@ def test_wrong_signing_key_rejects(authed_client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_expired_token_rejects(
-    authed_client: TestClient, signing_key: bytes
-) -> None:
+def test_expired_token_rejects(authed_client: TestClient, signing_key: bytes) -> None:
     issued_at = int(time.time()) - 120
     expired = jwt.encode(
         {"sub": "operator", "aud": "operator", "iat": issued_at, "exp": issued_at + 60},
@@ -62,9 +60,7 @@ def test_expired_token_rejects(
 
 
 def test_load_auth_state_disabled_when_no_signing_key() -> None:
-    state = load_auth_state(
-        signing_key_b64=None, service_token=None, master_key_b64=None
-    )
+    state = load_auth_state(signing_key_b64=None, service_token=None, master_key_b64=None)
     assert state.auth_disabled is True
 
 

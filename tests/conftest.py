@@ -107,22 +107,16 @@ def operator_token(signing_key: bytes) -> str:
 
 @pytest.fixture
 def orchestrator_service_token(signing_key: bytes) -> str:
-    return issue_token(
-        signing_key=signing_key, sub="orchestrator", aud="service:orchestrator"
-    )
+    return issue_token(signing_key=signing_key, sub="orchestrator", aud="service:orchestrator")
 
 
 @pytest.fixture
 def connector_service_token(signing_key: bytes) -> str:
-    return issue_token(
-        signing_key=signing_key, sub="connector", aud="service:connector"
-    )
+    return issue_token(signing_key=signing_key, sub="connector", aud="service:connector")
 
 
 @pytest.fixture
-def authed_operator_client(
-    authed_app: FastAPI, operator_token: str
-) -> Iterator[TestClient]:
+def authed_operator_client(authed_app: FastAPI, operator_token: str) -> Iterator[TestClient]:
     """Convenience: TestClient with Authorization header pre-attached
     as an operator token. Most CRUD tests want this."""
     with TestClient(authed_app) as c:

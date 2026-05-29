@@ -43,9 +43,7 @@ async def get_constitution(request: Request) -> Constitution:
     response_model=Constitution,
     dependencies=[Depends(require_operator)],
 )
-async def update_constitution(
-    request: Request, body: Constitution
-) -> Constitution:
+async def update_constitution(request: Request, body: Constitution) -> Constitution:
     """Partial update. Body is a `Constitution` shape with any subset
     of fields supplied; unsupplied fields keep their current value.
     """

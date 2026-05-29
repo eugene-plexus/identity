@@ -45,9 +45,7 @@ class MemoryClient:
         service_token: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        headers = (
-            {"Authorization": f"Bearer {service_token}"} if service_token else None
-        )
+        headers = {"Authorization": f"Bearer {service_token}"} if service_token else None
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
             timeout=httpx.Timeout(timeout_seconds, connect=10.0),
@@ -75,9 +73,7 @@ class MemoryClient:
                 continue
         return out
 
-    async def recent_for_person(
-        self, *, person_id: UUID, limit: int = 50
-    ) -> list[MemoryMessage]:
+    async def recent_for_person(self, *, person_id: UUID, limit: int = 50) -> list[MemoryMessage]:
         response = await self._client.get(
             f"/v1/memory/persons/{person_id}/recent",
             params={"limit": limit},
@@ -100,9 +96,7 @@ class MemoryClient:
                             if entry.get("timestamp")
                             else None
                         ),
-                        personId=(
-                            UUID(entry["personId"]) if entry.get("personId") else None
-                        ),
+                        personId=(UUID(entry["personId"]) if entry.get("personId") else None),
                     )
                 )
             except Exception:

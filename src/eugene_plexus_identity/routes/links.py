@@ -77,9 +77,7 @@ async def list_pending_links(request: Request) -> _PendingLinksResponse:
     status_code=201,
     dependencies=[Depends(require_service)],
 )
-async def create_pending_link(
-    request: Request, body: PendingIdentityLink
-) -> PendingIdentityLink:
+async def create_pending_link(request: Request, body: PendingIdentityLink) -> PendingIdentityLink:
     store: IdentityStore = request.app.state.identity_store
     existing = store.find_pending_for(body.platform, body.accountId)
     if existing is not None:
@@ -89,8 +87,7 @@ async def create_pending_link(
         raise _problem(
             status.HTTP_409_CONFLICT,
             "Already pending",
-            f"A pending link already exists for ({body.platform}, "
-            f"{body.accountId}).",
+            f"A pending link already exists for ({body.platform}, {body.accountId}).",
         )
     return store.create_pending_link(body)
 
